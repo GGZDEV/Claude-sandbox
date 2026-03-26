@@ -5,6 +5,7 @@
 ## Author: Port for Ascension WoW 3.3.5 (Bronzebeard) — original by Troma
 ## Version: 1.0.0-335a
 ## SavedVariables: OverlordDB
+## SavedVariablesPerCharacter: OverlordCharDB
 
 Locale.lua
 Zones.lua
