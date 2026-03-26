@@ -1,14 +1,11 @@
 -------------------------------------------------------------------------------
--- Overlord — UI.lua
--- Minimap button, main panel (Territory / Leaderboard tabs), and in-game hints
+-- Overlord -- UI.lua
+-- Minimap button, main panel (Territory / Leaderboard tabs),
+-- camp-selection popup, and in-game capture hints.
 -- WoW API target: 3.3.5 (Interface 30300)
 -------------------------------------------------------------------------------
 
 OverlordUI = {}
-
--- ============================================================
--- Constants / helpers
--- ============================================================
 
 local FACTION_COLOR = {
     Alliance = { r=0.20, g=0.45, b=1.00 },
@@ -16,10 +13,10 @@ local FACTION_COLOR = {
     Neutral  = { r=0.55, g=0.55, b=0.55 },
 }
 
-local function FactionHex(faction)
-    if faction == "Alliance" then return "|cff3399ff"
-    elseif faction == "Horde" then return "|cffcc2222"
-    else                           return "|cff888888"
+local function FactionHex(camp)
+    if camp == "Alliance" then return "|cff3399ff"
+    elseif camp == "Horde" then return "|cffcc2222"
+    else                        return "|cff888888"
     end
 end
 
@@ -27,15 +24,14 @@ end
 -- Minimap Button
 -- ============================================================
 
-local mmAngle   = 200   -- degrees, clockwise from East
+local mmAngle    = 200
 local mmDragging = false
 
 local function UpdateMMPos(btn)
     local rad = math.rad(mmAngle)
-    local x   = math.cos(rad) * 80
-    local y   = math.sin(rad) * 80
     btn:ClearAllPoints()
-    btn:SetPoint("CENTER", Minimap, "CENTER", x, y)
+    btn:SetPoint("CENTER", Minimap, "CENTER",
+        math.cos(rad) * 80, math.sin(rad) * 80)
 end
 
 local mmBtn = CreateFrame("Button", "OverlordMinimapBtn", Minimap)
@@ -54,7 +50,6 @@ mmTex:SetTexture("Interface\\Icons\\Ability_Warrior_BattleShout")
 UpdateMMPos(mmBtn)
 mmBtn:Show()
 
--- Drag to reposition along the minimap rim
 mmBtn:RegisterForDrag("LeftButton")
 mmBtn:SetScript("OnDragStart", function(self)
     mmDragging = true
@@ -67,7 +62,6 @@ mmBtn:SetScript("OnDragStart", function(self)
         UpdateMMPos(btn)
     end)
 end)
-
 mmBtn:SetScript("OnDragStop", function(self)
     mmDragging = false
     self:SetScript("OnUpdate", nil)
@@ -85,7 +79,6 @@ mmBtn:SetScript("OnClick", function(self, btn)
         DEFAULT_CHAT_FRAME:AddMessage(OverlordL["MSG_SYNC_SENT"])
     end
 end)
-
 mmBtn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:ClearLines()
@@ -117,37 +110,31 @@ panel:SetBackdrop({
 })
 panel:Hide()
 
--- Title
 local titleStr = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 titleStr:SetPoint("TOP", panel, "TOP", 0, -14)
 titleStr:SetText("|cff00ccff" .. OverlordL["UI_TITLE"] .. "|r")
 
--- Close button
 local closeBtn = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
 closeBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -3, -3)
 closeBtn:SetScript("OnClick", function() panel:Hide() end)
 
--- ── Tab buttons ─────────────────────────────────────────────
-local function MakeTabBtn(parent, label, xOffset)
+local function MakeTabBtn(parent, label, xOffset, w)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(88, 22)
+    b:SetSize(w or 88, 22)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, -42)
     b:SetText(label)
     return b
 end
 
-local tabTerritory  = MakeTabBtn(panel, OverlordL["UI_STATUS"],      14)
-local tabLeader     = MakeTabBtn(panel, OverlordL["UI_LEADERBOARD"], 106)
-
-local syncBtn = MakeTabBtn(panel, OverlordL["UI_SYNC"], 198)
-syncBtn:SetWidth(68)
+local tabTerritory = MakeTabBtn(panel, OverlordL["UI_STATUS"],      14)
+local tabLeader    = MakeTabBtn(panel, OverlordL["UI_LEADERBOARD"], 106)
+local syncBtn      = MakeTabBtn(panel, OverlordL["UI_SYNC"],        198, 68)
 syncBtn:SetScript("OnClick", function()
     OverlordNetwork.BroadcastSync()
     OverlordNetwork.ScheduleSyncRequest(1)
     DEFAULT_CHAT_FRAME:AddMessage(OverlordL["MSG_SYNC_SENT"])
 end)
 
--- ── Channel status (bottom) ──────────────────────────────────
 local chanText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 chanText:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 14, 12)
 chanText:SetText("|cffff9900" .. OverlordL["UI_CHANNEL_OFF"] .. "|r")
@@ -158,8 +145,8 @@ chanText:SetText("|cffff9900" .. OverlordL["UI_CHANNEL_OFF"] .. "|r")
 
 local terrScroll = CreateFrame(
     "ScrollFrame", "OverlordTerrScroll", panel, "UIPanelScrollFrameTemplate")
-terrScroll:SetPoint("TOPLEFT",     panel, "TOPLEFT",     12,  -68)
-terrScroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30,  28)
+terrScroll:SetPoint("TOPLEFT",     panel, "TOPLEFT",     12, -68)
+terrScroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 32)
 
 local terrContent = CreateFrame("Frame", "OverlordTerrContent", terrScroll)
 terrContent:SetWidth(260)
@@ -175,34 +162,27 @@ local function MakeZoneRow(parent, idx)
 
     local bg = row:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetTexture(
-        idx % 2 == 0 and 0.10 or 0.05,
-        idx % 2 == 0 and 0.10 or 0.05,
-        idx % 2 == 0 and 0.10 or 0.05,
-        0.50)
+    local v = idx % 2 == 0 and 0.10 or 0.05
+    bg:SetTexture(v, v, v, 0.50)
 
-    -- Faction colour strip (left edge)
     local strip = row:CreateTexture(nil, "ARTWORK")
     strip:SetWidth(5)
     strip:SetHeight(26)
     strip:SetPoint("LEFT", row, "LEFT", 2, 0)
     row.strip = strip
 
-    -- Zone name
-    local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    name:SetPoint("LEFT", row, "LEFT", 10, 4)
-    name:SetWidth(165)
-    name:SetJustifyH("LEFT")
-    row.nameText = name
+    local nameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    nameF:SetPoint("LEFT", row, "LEFT", 10, 4)
+    nameF:SetWidth(165)
+    nameF:SetJustifyH("LEFT")
+    row.nameText = nameF
 
-    -- Faction label (right)
-    local fac = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fac:SetPoint("RIGHT", row, "RIGHT", -8, 4)
-    fac:SetWidth(72)
-    fac:SetJustifyH("RIGHT")
-    row.facText = fac
+    local facF = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    facF:SetPoint("RIGHT", row, "RIGHT", -8, 4)
+    facF:SetWidth(72)
+    facF:SetJustifyH("RIGHT")
+    row.facText = facF
 
-    -- Capture progress bar (thin bar along bottom of row)
     local barBg = CreateFrame("StatusBar", nil, row)
     barBg:SetPoint("BOTTOMLEFT",  row, "BOTTOMLEFT",  10, 2)
     barBg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -8, 2)
@@ -226,7 +206,6 @@ local function MakeZoneRow(parent, idx)
 end
 
 local function RefreshTerritory()
-    -- Hide stale rows
     for _, r in ipairs(zoneRows) do r:Hide() end
 
     local y = 0
@@ -236,28 +215,25 @@ local function RefreshTerritory()
             row = MakeZoneRow(terrContent, i)
             zoneRows[i] = row
         end
-
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", terrContent, "TOPLEFT", 0, -y)
 
-        local st      = OverlordDB and OverlordDB.zones and OverlordDB.zones[zd.id]
-        local faction = (st and st.faction) or zd.faction
+        local st       = OverlordDB and OverlordDB.zones and OverlordDB.zones[zd.id]
+        local faction  = (st and st.faction) or zd.faction
         local progress = (st and st.captureProgress) or 0
 
-        -- Zone name (append base tag)
         local dname = OverlordL[zd.nameKey] or zd.id
         if zd.isBase then dname = dname .. " " .. OverlordL["UI_BASE"] end
         row.nameText:SetText(dname)
 
-        -- Colour strip
         local fc = FACTION_COLOR[faction] or FACTION_COLOR.Neutral
         row.strip:SetTexture(fc.r, fc.g, fc.b, 1)
 
-        -- Faction label text
         local isContested = (faction == "Neutral") and math.abs(progress) > 5
         local facLabel
         if zd.isBase then
-            facLabel = FactionHex(faction) .. OverlordL["STATUS_" .. faction:upper()] .. "|r"
+            facLabel = FactionHex(faction) ..
+                       OverlordL["STATUS_" .. faction:upper()] .. "|r"
         elseif isContested then
             local side = progress > 0 and "A" or "H"
             facLabel   = "|cffffff00" .. OverlordL["STATUS_CONTESTED"] ..
@@ -271,21 +247,11 @@ local function RefreshTerritory()
         end
         row.facText:SetText(facLabel)
 
-        -- Progress bar (only for contested / in-capture zones)
         if (not zd.isBase) and math.abs(progress) > 0 then
             row.progBar:Show()
             row.progBg:Show()
-            if progress >= 0 then
-                row.progBar:SetStatusBarColor(
-                    FACTION_COLOR.Alliance.r,
-                    FACTION_COLOR.Alliance.g,
-                    FACTION_COLOR.Alliance.b)
-            else
-                row.progBar:SetStatusBarColor(
-                    FACTION_COLOR.Horde.r,
-                    FACTION_COLOR.Horde.g,
-                    FACTION_COLOR.Horde.b)
-            end
+            local c = progress >= 0 and FACTION_COLOR.Alliance or FACTION_COLOR.Horde
+            row.progBar:SetStatusBarColor(c.r, c.g, c.b)
             row.progBar:SetValue(progress)
         else
             row.progBar:Hide()
@@ -295,7 +261,6 @@ local function RefreshTerritory()
         row:Show()
         y = y + 30
     end
-
     terrContent:SetHeight(math.max(y, 1))
 end
 
@@ -305,8 +270,8 @@ end
 
 local lbScroll = CreateFrame(
     "ScrollFrame", "OverlordLBScroll", panel, "UIPanelScrollFrameTemplate")
-lbScroll:SetPoint("TOPLEFT",     panel, "TOPLEFT",     12,  -68)
-lbScroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30,  28)
+lbScroll:SetPoint("TOPLEFT",     panel, "TOPLEFT",     12, -68)
+lbScroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 32)
 lbScroll:Hide()
 
 local lbContent = CreateFrame("Frame", "OverlordLBContent", lbScroll)
@@ -314,7 +279,6 @@ lbContent:SetWidth(260)
 lbContent:SetHeight(1)
 lbScroll:SetScrollChild(lbContent)
 
--- Column header
 local lbHeader = CreateFrame("Frame", nil, panel)
 lbHeader:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -68)
 lbHeader:SetSize(260, 18)
@@ -339,13 +303,10 @@ local function MakeLBRow(parent, idx)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(22)
     row:SetWidth(260)
-
     local bg = row:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetTexture(
-        idx % 2 == 0 and 0.10 or 0.05,
-        idx % 2 == 0 and 0.10 or 0.05,
-        idx % 2 == 0 and 0.10 or 0.05, 0.45)
+    local v = idx % 2 == 0 and 0.10 or 0.05
+    bg:SetTexture(v, v, v, 0.45)
 
     local function Col(x, w, justify)
         local f = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -354,54 +315,47 @@ local function MakeLBRow(parent, idx)
         f:SetJustifyH(justify or "LEFT")
         return f
     end
-
     row.rank  = Col(  2,  22)
     row.name  = Col( 26, 105)
     row.cap   = Col(132,  36, "CENTER")
     row.kill  = Col(170,  36, "CENTER")
     row.score = Col(210,  40, "RIGHT")
-
     return row
 end
 
 local function RefreshLeaderboard()
     for _, r in ipairs(lbRows) do r:Hide() end
 
-    -- Sort by score desc
     local entries = {}
     for name, data in pairs(OverlordDB and OverlordDB.leaderboard or {}) do
         table.insert(entries, {
             name     = name,
             captures = data.captures or 0,
             kills    = data.kills    or 0,
-            faction  = data.faction  or "Neutral",
+            -- backwards-compat: old saves used "faction" key
+            camp     = data.camp or data.faction or "Neutral",
             score    = OverlordCore.Score(data),
         })
     end
     table.sort(entries, function(a, b) return a.score > b.score end)
 
-    -- Header offset: 20px so rows start below the header
-    local y = 20
+    local y = 20  -- leave room for header
     for i, e in ipairs(entries) do
         local row = lbRows[i]
         if not row then
             row = MakeLBRow(lbContent, i)
             lbRows[i] = row
         end
-
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", lbContent, "TOPLEFT", 0, -y)
-
         row.rank:SetText(i .. ".")
-        row.name:SetText(FactionHex(e.faction) .. e.name .. "|r")
+        row.name:SetText(FactionHex(e.camp) .. e.name .. "|r")
         row.cap:SetText(e.captures)
         row.kill:SetText(e.kills)
         row.score:SetText("|cffffcc00" .. e.score .. "|r")
-
         row:Show()
         y = y + 22
     end
-
     lbContent:SetHeight(math.max(y, 1))
 end
 
@@ -440,7 +394,6 @@ panel:SetScript("OnUpdate", function(self, elapsed)
     if uiTick < 1 then return end
     uiTick = 0
 
-    -- Update channel indicator
     local chNum = GetChannelName("Overlord") or 0
     if chNum > 0 then
         chanText:SetText("|cff00ff00" .. OverlordL["UI_CHANNEL_ON"] ..
@@ -449,7 +402,6 @@ panel:SetScript("OnUpdate", function(self, elapsed)
         chanText:SetText("|cffff9900" .. OverlordL["UI_CHANNEL_OFF"] .. "|r")
     end
 
-    -- Refresh current tab
     if activeTab == "territory" then
         RefreshTerritory()
     else
@@ -472,11 +424,8 @@ end
 
 function OverlordUI.Update()
     if not panel:IsShown() then return end
-    if activeTab == "territory" then
-        RefreshTerritory()
-    else
-        RefreshLeaderboard()
-    end
+    if activeTab == "territory" then RefreshTerritory()
+    else RefreshLeaderboard() end
 end
 
 function OverlordUI.UpdateLeaderboard()
@@ -493,7 +442,6 @@ local uiInitFrame = CreateFrame("Frame")
 uiInitFrame:RegisterEvent("ADDON_LOADED")
 uiInitFrame:SetScript("OnEvent", function(self, event, addonName)
     if addonName == "Overlord" then
-        -- Delay one frame to ensure OverlordDB is initialised by Core
         self:SetScript("OnUpdate", function(self2)
             self2:SetScript("OnUpdate", nil)
             if OverlordDB and OverlordDB.minimapAngle then
@@ -506,9 +454,7 @@ uiInitFrame:SetScript("OnEvent", function(self, event, addonName)
 end)
 
 -- ============================================================
--- Capture hint display
--- Shown above the action bars when the player enters a zone
--- where capture is blocked, so they know why nothing happens.
+-- Capture hint (flashed above action bars)
 -- ============================================================
 
 local hintFrame = CreateFrame("Frame", "OverlordHintFrame", UIParent)
@@ -526,17 +472,117 @@ hintText:SetJustifyH("CENTER")
 hintText:SetJustifyV("MIDDLE")
 
 local hintTimer = 0
-
 hintFrame:SetScript("OnUpdate", function(self, elapsed)
     hintTimer = hintTimer - elapsed
-    if hintTimer <= 0 then
-        self:Hide()
-    end
+    if hintTimer <= 0 then self:Hide() end
 end)
 
--- Called by Core or externally to flash a short message above action bars
 function OverlordUI.ShowHint(msg, duration)
     hintText:SetText(msg)
     hintTimer = duration or 3
     hintFrame:Show()
 end
+
+-- ============================================================
+-- Camp-selection popup
+-- On Ascension WoW (crossfaction), UnitFactionGroup() reflects
+-- race only.  Players must explicitly declare which side they
+-- fight for.  This popup handles that choice.
+-- ============================================================
+
+local campPopup = CreateFrame("Frame", "OverlordCampPopup", UIParent)
+campPopup:SetSize(400, 220)
+campPopup:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+campPopup:SetMovable(true)
+campPopup:EnableMouse(true)
+campPopup:RegisterForDrag("LeftButton")
+campPopup:SetScript("OnDragStart", function(self) self:StartMoving() end)
+campPopup:SetScript("OnDragStop",  function(self) self:StopMovingOrSizing() end)
+campPopup:SetFrameStrata("DIALOG")
+campPopup:SetBackdrop({
+    bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile     = true, tileSize = 32, edgeSize = 32,
+    insets   = { left=8, right=8, top=8, bottom=8 },
+})
+campPopup:Hide()
+
+local cpTitle = campPopup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+cpTitle:SetPoint("TOP", campPopup, "TOP", 0, -16)
+
+local cpBody = campPopup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+cpBody:SetPoint("TOP", cpTitle, "BOTTOM", 0, -10)
+cpBody:SetWidth(360)
+cpBody:SetJustifyH("CENTER")
+
+local cpCurrent = campPopup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+cpCurrent:SetPoint("TOP", cpBody, "BOTTOM", 0, -8)
+cpCurrent:SetWidth(360)
+cpCurrent:SetJustifyH("CENTER")
+
+local cpAlliance = CreateFrame("Button", nil, campPopup, "UIPanelButtonTemplate")
+cpAlliance:SetSize(170, 28)
+cpAlliance:SetPoint("BOTTOMLEFT", campPopup, "BOTTOMLEFT", 18, 46)
+cpAlliance:SetScript("OnClick", function()
+    OverlordCore.SetCamp("Alliance")
+    campPopup:Hide()
+    OverlordUI.Update()
+end)
+
+local cpHorde = CreateFrame("Button", nil, campPopup, "UIPanelButtonTemplate")
+cpHorde:SetSize(170, 28)
+cpHorde:SetPoint("BOTTOMRIGHT", campPopup, "BOTTOMRIGHT", -18, 46)
+cpHorde:SetScript("OnClick", function()
+    OverlordCore.SetCamp("Horde")
+    campPopup:Hide()
+    OverlordUI.Update()
+end)
+
+local cpLeave = CreateFrame("Button", nil, campPopup, "UIPanelButtonTemplate")
+cpLeave:SetSize(120, 24)
+cpLeave:SetPoint("BOTTOM", campPopup, "BOTTOM", 0, 14)
+cpLeave:SetScript("OnClick", function()
+    if OverlordCore.GetCamp() then OverlordCore.SetCamp(nil) end
+    campPopup:Hide()
+end)
+
+local function OpenCampPopup()
+    cpTitle:SetText("|cff00ccff" .. OverlordL["CAMP_TITLE"] .. "|r")
+    cpBody:SetText(OverlordL["CAMP_BODY"])
+    cpAlliance:SetText("|cff3399ff" .. OverlordL["CAMP_BTN_ALLIANCE"] .. "|r")
+    cpHorde:SetText("|cffcc2222" .. OverlordL["CAMP_BTN_HORDE"] .. "|r")
+    cpLeave:SetText(OverlordL["CAMP_BTN_LEAVE"])
+
+    local camp = OverlordCore.GetCamp()
+    if     camp == "Alliance" then cpCurrent:SetText(OverlordL["CAMP_CURRENT_A"])
+    elseif camp == "Horde"    then cpCurrent:SetText(OverlordL["CAMP_CURRENT_H"])
+    else                           cpCurrent:SetText(OverlordL["CAMP_CURRENT_NONE"])
+    end
+    campPopup:Show()
+end
+
+function OverlordUI.ShowCampSelection()
+    OpenCampPopup()
+end
+
+-- ============================================================
+-- "Camp" button in the main panel footer
+-- ============================================================
+
+local campBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+campBtn:SetSize(72, 22)
+campBtn:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -14, 10)
+campBtn:SetText("Camp")
+campBtn:SetScript("OnClick", function() OpenCampPopup() end)
+campBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:ClearLines()
+    local camp = OverlordCore.GetCamp()
+    if     camp == "Alliance" then GameTooltip:AddLine(OverlordL["CAMP_CURRENT_A"])
+    elseif camp == "Horde"    then GameTooltip:AddLine(OverlordL["CAMP_CURRENT_H"])
+    else                           GameTooltip:AddLine(OverlordL["CAMP_CURRENT_NONE"])
+    end
+    GameTooltip:AddLine("/overlord join alliance|horde", 1, 1, 0)
+    GameTooltip:Show()
+end)
+campBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
