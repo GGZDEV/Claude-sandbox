@@ -423,9 +423,13 @@ function OverlordUI.TogglePanel()
 end
 
 function OverlordUI.Update()
-    if not panel:IsShown() then return end
-    if activeTab == "territory" then RefreshTerritory()
-    else RefreshLeaderboard() end
+    if panel:IsShown() then
+        if activeTab == "territory" then RefreshTerritory()
+        else RefreshLeaderboard() end
+    end
+    if WorldMapFrame and WorldMapFrame:IsShown() then
+        OverlordUI.RefreshMapMarkers()
+    end
 end
 
 function OverlordUI.UpdateLeaderboard()
@@ -586,3 +590,123 @@ campBtn:SetScript("OnEnter", function(self)
     GameTooltip:Show()
 end)
 campBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- ============================================================
+-- World Map Overlay
+-- Coloured markers on each Arathi capture point when the
+-- player opens the world map to Arathi Highlands.
+-- mapX/mapY in Zones.lua are 0-1 fractions of the map tile.
+-- ============================================================
+
+local MAP_ARATHI_EN = "Arathi Highlands"
+local MAP_ARATHI_FR = "Hautes-terres d'Arathi"
+
+local wm_markers = {}
+
+local function WM_IsArathi()
+    local info = GetMapInfo()
+    return info == MAP_ARATHI_EN or info == MAP_ARATHI_FR
+end
+
+local function WM_PlaceMarkers()
+    if not WM_IsArathi() then
+        for _, pin in ipairs(wm_markers) do pin:Hide() end
+        return
+    end
+
+    local w = WorldMapDetailFrame:GetWidth()
+    local h = WorldMapDetailFrame:GetHeight()
+
+    for i, zd in ipairs(Overlord_ZoneData) do
+        local pin = wm_markers[i]
+
+        if not pin then
+            local sz = zd.isBase and 18 or 14
+            local f  = CreateFrame("Frame", nil, WorldMapDetailFrame)
+            f:SetSize(sz, sz)
+            f:SetFrameLevel(WorldMapDetailFrame:GetFrameLevel() + 10)
+            f:EnableMouse(true)
+
+            -- dark border
+            local border = f:CreateTexture(nil, "BACKGROUND")
+            border:SetAllPoints()
+            border:SetTexture(0, 0, 0, 0.85)
+
+            -- faction-coloured fill (2 px inset from border)
+            local fill = f:CreateTexture(nil, "ARTWORK")
+            fill:SetPoint("TOPLEFT",     f, "TOPLEFT",     2, -2)
+            fill:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
+            f.fill = fill
+
+            -- A / H / ? label centred inside
+            local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lbl:SetAllPoints()
+            lbl:SetJustifyH("CENTER")
+            lbl:SetJustifyV("MIDDLE")
+            lbl:SetTextColor(1, 1, 1, 1)
+            f.lbl = lbl
+
+            f:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:ClearLines()
+                local z    = self.zd
+                local name = OverlordL[z.nameKey] or z.id
+                local st   = OverlordDB and OverlordDB.zones and OverlordDB.zones[z.id]
+                local fac  = (st and st.faction) or z.faction
+                local prog = st and (st.captureProgress or 0) or 0
+                local fc   = FACTION_COLOR[fac] or FACTION_COLOR.Neutral
+                GameTooltip:AddLine(name, 1, 1, 1)
+                GameTooltip:AddLine(OverlordL["STATUS_" .. fac:upper()] or fac,
+                    fc.r, fc.g, fc.b)
+                if not z.isBase and math.abs(prog) > 0 then
+                    local side = prog > 0
+                        and OverlordL["STATUS_ALLIANCE"]
+                        or  OverlordL["STATUS_HORDE"]
+                    GameTooltip:AddLine(
+                        string.format("%s %d%%", side, math.abs(prog)), 1, 1, 0)
+                end
+                GameTooltip:Show()
+            end)
+            f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+            f.zd = zd
+            wm_markers[i] = f
+            pin = f
+        end
+
+        -- position
+        pin:ClearAllPoints()
+        pin:SetPoint("CENTER", WorldMapDetailFrame, "TOPLEFT",
+            zd.mapX * w, -zd.mapY * h)
+
+        -- update colour
+        local st  = OverlordDB and OverlordDB.zones and OverlordDB.zones[zd.id]
+        local fac = (st and st.faction) or zd.faction
+        local fc  = FACTION_COLOR[fac] or FACTION_COLOR.Neutral
+        pin.fill:SetTexture(fc.r, fc.g, fc.b, 1)
+
+        -- update label
+        if     fac == "Alliance" then pin.lbl:SetText("A")
+        elseif fac == "Horde"    then pin.lbl:SetText("H")
+        else                          pin.lbl:SetText("?")
+        end
+
+        pin:Show()
+    end
+end
+
+-- refresh on WORLD_MAP_UPDATE (fires when continent/zone changes on the map)
+local wmEventFrame = CreateFrame("Frame", "OverlordWorldMapFrame")
+wmEventFrame:RegisterEvent("WORLD_MAP_UPDATE")
+wmEventFrame:SetScript("OnEvent", function() WM_PlaceMarkers() end)
+
+-- also refresh when the map window opens
+local _wmOnShow = WorldMapFrame:GetScript("OnShow")
+WorldMapFrame:SetScript("OnShow", function(self)
+    if _wmOnShow then _wmOnShow(self) end
+    WM_PlaceMarkers()
+end)
+
+function OverlordUI.RefreshMapMarkers()
+    WM_PlaceMarkers()
+end
