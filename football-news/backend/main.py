@@ -299,9 +299,25 @@ async def stats():
 
 
 # ---------------------------------------------------------------------------
-# Serve frontend
+# Serve React SPA (priority) or legacy frontend
 # ---------------------------------------------------------------------------
-if FRONTEND_DIR.exists():
+SPA_DIR = BASE_DIR / "spa_dist"
+
+if SPA_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(SPA_DIR / "assets")), name="spa_assets")
+
+    @app.get("/")
+    async def serve_spa():
+        return FileResponse(str(SPA_DIR / "index.html"))
+
+    # Catch-all: serve index.html for client-side routing
+    @app.get("/{full_path:path}")
+    async def serve_spa_routes(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(404)
+        return FileResponse(str(SPA_DIR / "index.html"))
+
+elif FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
     @app.get("/")
