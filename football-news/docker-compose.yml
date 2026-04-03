@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/football_news.db:/app/football_news.db
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

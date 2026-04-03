@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tab-bar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+  --header-h: calc(52px + env(safe-area-inset-top, 0px));
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: #0f1117;
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Scrollable areas */
+.scroll-area {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #252a38; border-radius: 2px; }
+
+/* Range input */
+input[type="range"] { accent-color: #3b82f6; cursor: pointer; }
+
+/* Transition for sheets */
+.sheet-enter { transform: translateY(100%); }
+.sheet-enter-active { transform: translateY(0); transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+.sheet-exit { transform: translateY(0); }
+.sheet-exit-active { transform: translateY(100%); transition: transform 0.28s ease-in; }
+
+/* iOS-like spring */
+@keyframes springIn {
+  0%   { transform: scale(0.94) translateY(8px); opacity: 0; }
+  60%  { transform: scale(1.01) translateY(-2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.spring-in { animation: springIn 0.28s ease forwards; }
+
+/* Blur for tab bar */
+.blur-bg {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Active press state */
+.press-active:active { transform: scale(0.97); transition: transform 0.08s; }
