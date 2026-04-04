@@ -1,7 +1,0 @@
-{
-  "buildCommand": "cd football-news-spa && npm ci && npm run build",
-  "outputDirectory": "football-news-spa/dist",
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
-}
